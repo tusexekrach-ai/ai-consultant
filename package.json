@@ -1,0 +1,17 @@
+{
+  "name": "ai-business-advisor",
+  "version": "1.0.0",
+  "description": "แชทบอท AI ที่ปรึกษาด้านธุรกิจ (Gemini API) รันได้ทั้ง Vercel และ Node.js",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file=.env server.js",
+    "dev": "vercel dev"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

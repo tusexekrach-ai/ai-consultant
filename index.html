@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AI ที่ปรึกษาด้านธุรกิจ</title>
+  <meta name="description" content="ปรึกษาเรื่องกลยุทธ์ธุรกิจกับที่ปรึกษา AI วิเคราะห์เจาะลึกตามบริบทธุรกิจของคุณ">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+        </div>
+        <div>
+          <h1>AI ที่ปรึกษาด้านธุรกิจ</h1>
+          <p class="status"><span class="dot" aria-hidden="true"></span> พร้อมให้คำปรึกษา</p>
+        </div>
+      </div>
+      <button id="resetBtn" class="ghost-btn" type="button" title="เริ่มบทสนทนาใหม่">เริ่มใหม่</button>
+    </header>
+
+    <main id="messages" class="messages" role="log" aria-live="polite" aria-label="บทสนทนา"></main>
+
+    <div id="chips" class="chips" aria-label="หัวข้อแนะนำ">
+      <button type="button" class="chip" data-text="ผมอยากเริ่มธุรกิจใหม่ แต่ยังไม่แน่ใจว่าควรทำอะไรดี">เริ่มธุรกิจใหม่</button>
+      <button type="button" class="chip" data-text="ธุรกิจของผมยอดขายตกลง อยากหาสาเหตุและวิธีแก้">ยอดขายตก</button>
+      <button type="button" class="chip" data-text="อยากขยายธุรกิจให้โตขึ้น ควรเริ่มจากตรงไหนดี">ขยายธุรกิจ</button>
+      <button type="button" class="chip" data-text="ช่วยวางกลยุทธ์การตลาดให้ธุรกิจของผมหน่อย">วางกลยุทธ์การตลาด</button>
+    </div>
+
+    <footer class="composer">
+      <form id="chatForm" autocomplete="off">
+        <label for="input" class="sr-only">พิมพ์ข้อความ</label>
+        <textarea id="input" rows="1" maxlength="4000" placeholder="เล่าเรื่องธุรกิจของคุณได้เลย..." enterkeyhint="send"></textarea>
+        <button id="sendBtn" class="send-btn" type="submit" aria-label="ส่งข้อความ">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
+      </form>
+      <p class="hint">Enter เพื่อส่ง · Shift+Enter เพื่อขึ้นบรรทัดใหม่ · คำแนะนำจาก AI ใช้ประกอบการตัดสินใจเท่านั้น</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
