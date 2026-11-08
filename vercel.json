@@ -1,9 +1,5 @@
 {
-  "functions": {
-    "api/chat.js": {
-      "maxDuration": 60
-    }
-  },
+  "cleanUrls": true,
   "headers": [
     {
       "source": "/(.*)",

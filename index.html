@@ -22,7 +22,10 @@
           <p class="status"><span class="dot" aria-hidden="true"></span> พร้อมให้คำปรึกษา</p>
         </div>
       </div>
-      <button id="resetBtn" class="ghost-btn" type="button" title="เริ่มบทสนทนาใหม่">เริ่มใหม่</button>
+      <div class="header-actions">
+        <button id="settingsBtn" class="ghost-btn" type="button" title="ตั้งค่า Gemini API key">ตั้งค่า</button>
+        <button id="resetBtn" class="ghost-btn" type="button" title="เริ่มบทสนทนาใหม่">เริ่มใหม่</button>
+      </div>
     </header>
 
     <main id="messages" class="messages" role="log" aria-live="polite" aria-label="บทสนทนา"></main>
@@ -46,6 +49,25 @@
     </footer>
   </div>
 
+  <dialog id="keyDialog" class="key-dialog" aria-labelledby="keyTitle">
+    <form id="keyForm" method="dialog">
+      <h2 id="keyTitle">ตั้งค่า Gemini API key</h2>
+      <p>ขอ key ฟรีได้ที่ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
+         แล้วนำมาวางด้านล่าง key จะถูกเก็บในเบราว์เซอร์เครื่องนี้เท่านั้น และถูกส่งตรงไปยัง Google ไม่ผ่านเซิร์ฟเวอร์อื่น</p>
+      <p id="keyNote" class="key-note"></p>
+      <label for="keyInput" class="sr-only">Gemini API key</label>
+      <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="วาง Gemini API key ที่นี่">
+      <div class="key-actions">
+        <button type="button" id="keyClear" class="ghost-btn danger" hidden>ลบ key</button>
+        <span class="spacer"></span>
+        <button type="button" id="keyCancel" class="ghost-btn">ปิด</button>
+        <button type="submit" class="primary-btn">บันทึก</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="systemPrompt.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,42 +1,47 @@
-# AI ที่ปรึกษาด้านธุรกิจ
+# AI ที่ปรึกษาด้านธุรกิจ (เวอร์ชัน Static / Client-side)
+
+เว็บนี้เป็นไฟล์ HTML/CSS/JS ล้วน ไม่มี Node.js backend และไม่มี Serverless Function
+หน้าเว็บเรียก Gemini API จากเบราว์เซอร์ของผู้ใช้โดยตรง
 
 ```
-ai-business-advisor/
-├── api/chat.js            # Backend: เรียก Gemini API (Vercel Serverless / Node)
-├── lib/systemPrompt.js    # System Prompt (ตรรกะความคิดของที่ปรึกษา)
-├── public/
-│   ├── index.html         # หน้าแชท
-│   ├── style.css
-│   └── app.js             # ส่ง-รับข้อความกับ /api/chat
-├── server.js              # เซิร์ฟเวอร์ Node.js/Express (ใช้เมื่อไม่ได้อยู่บน Vercel)
-├── vercel.json
-├── package.json
-└── .env.example
+├── index.html        # หน้าแชท
+├── style.css
+├── app.js            # ตรรกะแชท + เรียก Gemini API
+├── systemPrompt.js   # System Prompt ของที่ปรึกษาธุรกิจ (แก้บุคลิก/ขั้นตอนได้ที่นี่)
+├── config.js         # ตั้งค่า key / โมเดล (ไฟล์เดียวที่ต้องแก้ก่อนอัปโหลด)
+└── vercel.json       # security headers (ไม่บังคับ)
 ```
 
-## รันบนเครื่อง (Node.js)
-```bash
-npm install
-cp .env.example .env      # แล้วใส่ GEMINI_API_KEY (ขอฟรีที่ https://aistudio.google.com/apikey)
-npm start                 # เปิด http://localhost:3000
-```
+## อัปโหลดขึ้น Vercel
+1. **ลบไฟล์ของเวอร์ชันเก่าออกจากโปรเจกต์/รีโปให้หมดก่อน** โดยเฉพาะ `api/`, `server.js`, `package.json`, `lib/`, `public/`
+   (ถ้ายังเหลือ Vercel อาจยังพยายามรันเป็น Function และเกิด error 500 เดิม)
+2. วางไฟล์ในโฟลเดอร์นี้ไว้ที่ root ของโปรเจกต์
+3. ตั้ง Framework Preset = **Other**, Build Command ว่าง, Output Directory ว่าง
+4. Deploy ได้เลย (หรือ `vercel --prod`)
 
-## Deploy บน Vercel
-```bash
-npm i -g vercel
-vercel                    # ทำตามขั้นตอน
-vercel env add GEMINI_API_KEY   # ใส่ key ทั้ง Production/Preview
-vercel --prod
-```
-หรือ Import repo ใน Vercel Dashboard แล้วเพิ่ม Environment Variable `GEMINI_API_KEY` ที่ Settings > Environment Variables
+ทดสอบบนเครื่อง: `python3 -m http.server 8000` แล้วเปิด http://localhost:8000
 
-## ปรับแต่ง
-- บุคลิก/ขั้นตอนการถาม-วิเคราะห์: แก้ `lib/systemPrompt.js`
-- โมเดล/ความยาวคำตอบ: `GEMINI_MODEL`, `MAX_TOKENS`
-- ธีมสี/หน้าตา: ตัวแปร CSS ที่ต้น `public/style.css`
+## เรื่อง API key (สำคัญ)
+เพราะไม่มี backend คอยซ่อน key โค้ดทุกบรรทัดจึงถูกดาวน์โหลดไปที่เบราว์เซอร์ของผู้เข้าชม
 
-## เรื่องที่ควรรู้เกี่ยวกับ Gemini Free Tier
-- โควตาจำกัดต่อนาที/ต่อวัน และรายชื่อโมเดลที่ใช้ฟรีเปลี่ยนได้ ตรวจที่ Google AI Studio (หน้า rate limit)
+**วิธี A: ให้ผู้ใช้กรอก key เอง (ค่าเริ่มต้น แนะนำ)**
+ปล่อย `GEMINI_API_KEY` ใน `config.js` ว่างไว้ เมื่อผู้ใช้ส่งข้อความครั้งแรก หน้าเว็บจะขอให้วาง key
+ของตัวเอง (ขอฟรีที่ https://aistudio.google.com/apikey) key เก็บใน localStorage ของเครื่องนั้นเท่านั้น
+และใช้โควตาของผู้ใช้คนนั้นเอง
+
+**วิธี B: ฝัง key ของคุณใน config.js**
+ใครเปิด DevTools หรือดูซอร์สโค้ดก็เห็น key และเอาไปใช้เองได้ จึงควรทำทั้งหมดนี้ก่อนเปิดให้คนอื่นใช้:
+- สร้าง key เฉพาะสำหรับเว็บนี้ ไม่ใช้ key ร่วมกับงานอื่น
+- จำกัด key ใน Google Cloud Console (APIs & Services > Credentials > เลือก key):
+  *Application restrictions* = Websites (HTTP referrers) ใส่โดเมนของคุณ เช่น `https://your-domain.com/*`
+  และ *API restrictions* = Generative Language API เท่านั้น
+- ตรวจโควตาและการใช้งานเป็นระยะ ถ้าถูกนำไปใช้เกินควรให้ลบ key แล้วสร้างใหม่
+- การจำกัดด้วยโดเมนช่วยกันการเรียกจากเว็บอื่น แต่ผู้ไม่หวังดีปลอมค่า Referer จากเครื่องมือภายนอกได้
+  จึงไม่ใช่การป้องกันเต็มรูปแบบ ถ้าต้องการซ่อน key จริงๆ ต้องใช้ backend
+
+## ข้อควรรู้เกี่ยวกับ Gemini Free Tier
+- โควตาจำกัดต่อนาที/ต่อวัน และรายชื่อโมเดลที่ใช้ฟรีเปลี่ยนได้ ตรวจที่ Google AI Studio แล้วแก้ `GEMINI_MODEL` ใน `config.js`
 - ตามเงื่อนไขของ Google ข้อมูลที่ส่งผ่าน Free Tier อาจถูกนำไปปรับปรุงผลิตภัณฑ์ของ Google
-  จึงไม่ควรให้ผู้ใช้กรอกข้อมูลลับ/ข้อมูลส่วนบุคคลของลูกค้า ถ้าต้องการหลีกเลี่ยงให้ใช้แบบชำระเงิน
-- ถ้าเจอ error 429 บ่อย ลดค่า `RATE_LIMIT_PER_MIN` หรือเปลี่ยน `GEMINI_MODEL` เป็นรุ่นที่โควตาสูงกว่า
+  ไม่ควรให้ผู้ใช้กรอกข้อมูลลับหรือข้อมูลส่วนบุคคลของลูกค้า
+- System Prompt อยู่ในไฟล์ฝั่งเบราว์เซอร์ ผู้ใช้ที่เปิดดูซอร์สโค้ดจะอ่านได้ ไม่ควรใส่ข้อมูลลับในนั้น
+- เว็บแบบนี้ไม่มี rate limit ฝั่งเซิร์ฟเวอร์ ถ้าฝัง key ของตัวเอง ผู้เข้าชมคนเดียวอาจใช้โควตาหมดได้

@@ -1,15 +1,23 @@
 /**
- * Frontend ของแชทบอท "AI ที่ปรึกษาด้านธุรกิจ"
- * - ส่งประวัติแชทไปที่ /api/chat และแสดงคำตอบ
- * - ไม่มี API key ในไฟล์นี้ (key อยู่ฝั่งเซิร์ฟเวอร์เท่านั้น)
+ * แชทบอท "AI ที่ปรึกษาด้านธุรกิจ" (Client-side: เรียก Gemini API จากเบราว์เซอร์โดยตรง ไม่มี backend)
+ * - ต้องโหลด config.js และ systemPrompt.js ก่อนไฟล์นี้ (ดู index.html)
+ * - API key มาจาก 2 ที่: key ที่ผู้ใช้กรอกเอง (เก็บใน localStorage) หรือ config.js
  */
 (() => {
   'use strict';
 
-  const API_URL = '/api/chat';
+  const CFG = window.APP_CONFIG || {};
+  const SYSTEM_PROMPT = window.SYSTEM_PROMPT || '';
+  const MODEL = CFG.GEMINI_MODEL || 'gemini-2.5-flash';
+  const MAX_TOKENS = Number(CFG.MAX_TOKENS) || 4096;
+  const TEMPERATURE = CFG.TEMPERATURE !== undefined ? Number(CFG.TEMPERATURE) : 0.7;
+  const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
   const STORAGE_KEY = 'business_advisor_chat_v1';
+  const KEY_STORAGE = 'business_advisor_gemini_key_v1';
   const FETCH_TIMEOUT_MS = 60_000;
   const MAX_INPUT = 4000;
+  const MAX_MESSAGES = 40;
 
   const GREETING =
     'สวัสดีครับ ผมคือที่ปรึกษาธุรกิจ AI 👋\n\n' +
@@ -24,6 +32,13 @@
   const $send = document.getElementById('sendBtn');
   const $reset = document.getElementById('resetBtn');
   const $chips = document.getElementById('chips');
+  const $settings = document.getElementById('settingsBtn');
+  const $keyDialog = document.getElementById('keyDialog');
+  const $keyForm = document.getElementById('keyForm');
+  const $keyInput = document.getElementById('keyInput');
+  const $keyNote = document.getElementById('keyNote');
+  const $keyClear = document.getElementById('keyClear');
+  const $keyCancel = document.getElementById('keyCancel');
 
   /** ประวัติที่ส่งให้ API: [{ role: 'user' | 'assistant', content: string }] (ไม่รวมข้อความทักทาย) */
   let history = [];
@@ -190,35 +205,111 @@
     }
   }
 
-  // ---------- เรียก Backend ----------
+  // ---------- API key ----------
+  function getSavedKey() {
+    try {
+      return (localStorage.getItem(KEY_STORAGE) || '').trim();
+    } catch {
+      return '';
+    }
+  }
+  const getApiKey = () => getSavedKey() || String(CFG.GEMINI_API_KEY || '').trim();
+
+  function openKeyDialog() {
+    const saved = getSavedKey();
+    const hasConfigKey = Boolean(String(CFG.GEMINI_API_KEY || '').trim());
+    $keyInput.value = '';
+    $keyInput.placeholder = saved ? 'มี key ที่บันทึกไว้แล้ว (กรอกใหม่เพื่อแทนที่)' : 'วาง Gemini API key ที่นี่';
+    $keyClear.hidden = !saved;
+    $keyNote.textContent = hasConfigKey && !saved
+      ? 'เว็บนี้มี key ตั้งไว้ให้แล้ว คุณไม่จำเป็นต้องกรอกเอง แต่ถ้ากรอก ระบบจะใช้ key ของคุณแทน'
+      : '';
+    if (typeof $keyDialog.showModal === 'function') $keyDialog.showModal();
+    else $keyDialog.setAttribute('open', '');
+    $keyInput.focus();
+  }
+
+  function closeKeyDialog() {
+    if (typeof $keyDialog.close === 'function') $keyDialog.close();
+    else $keyDialog.removeAttribute('open');
+  }
+
+  // ---------- เรียก Gemini API โดยตรง ----------
+  /** เตรียมประวัติแชท: จำกัดจำนวน/ความยาว, ตัดข้อความ assistant นำหน้า, รวมข้อความที่ role ซ้ำติดกัน */
+  function buildContents() {
+    const msgs = history
+      .slice(-MAX_MESSAGES)
+      .map((m) => ({ role: m.role, content: String(m.content).trim().slice(0, MAX_INPUT) }))
+      .filter((m) => m.content);
+    while (msgs.length && msgs[0].role !== 'user') msgs.shift();
+
+    const contents = [];
+    for (const m of msgs) {
+      const role = m.role === 'assistant' ? 'model' : 'user';
+      const last = contents[contents.length - 1];
+      if (last && last.role === role) last.parts[0].text += `\n\n${m.content}`;
+      else contents.push({ role, parts: [{ text: m.content }] });
+    }
+    return contents;
+  }
+
+  const SAFETY_MSG = 'ขออภัย ระบบไม่สามารถตอบข้อความนี้ได้ ลองปรับถ้อยคำแล้วส่งใหม่อีกครั้ง';
+
   async function requestReply() {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      openKeyDialog();
+      throw new Error('ยังไม่ได้ตั้งค่า Gemini API key กรุณากรอก key แล้วกด "ลองอีกครั้ง"');
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      const res = await fetch(API_URL, {
+      const res = await fetch(`${GEMINI_BASE_URL}/${encodeURIComponent(MODEL)}:generateContent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: buildContents(),
+          generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: TEMPERATURE },
+        }),
         signal: controller.signal,
       });
 
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        /* ตอบกลับไม่ใช่ JSON */
+      if (!res.ok) {
+        // รายละเอียดจริงดูได้ใน DevTools > Console
+        const detail = await res.text().catch(() => '');
+        console.error('Gemini API error', res.status, detail.slice(0, 500));
+        if (res.status === 400 || res.status === 401 || res.status === 403) {
+          if (!getSavedKey()) { /* key มาจาก config.js */ } else openKeyDialog();
+          throw new Error('API key ไม่ถูกต้อง หมดอายุ หรือไม่ได้รับอนุญาตให้ใช้งานจากเว็บนี้ กรุณาตรวจสอบ key ในปุ่ม "ตั้งค่า"');
+        }
+        if (res.status === 429) throw new Error('โควตาการใช้งาน AI ในขณะนี้เต็มแล้ว กรุณารอสักครู่แล้วลองใหม่อีกครั้ง');
+        if (res.status === 503) throw new Error('ขณะนี้มีผู้ใช้งานจำนวนมาก กรุณาลองใหม่อีกครั้งในอีกสักครู่');
+        throw new Error('ไม่สามารถเชื่อมต่อระบบ AI ได้ในขณะนี้ กรุณาลองใหม่');
       }
 
-      if (!res.ok) {
-        throw new Error((data && data.error) || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+      const data = await res.json();
+      if (data.promptFeedback && data.promptFeedback.blockReason) throw new Error(SAFETY_MSG);
+
+      const candidate = data.candidates && data.candidates[0];
+      const reply = ((candidate && candidate.content && candidate.content.parts) || [])
+        .filter((part) => typeof part.text === 'string' && !part.thought)
+        .map((part) => part.text)
+        .join('')
+        .trim();
+
+      if (!reply) {
+        console.error('Gemini empty reply, finishReason =', candidate && candidate.finishReason);
+        if (candidate && (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'PROHIBITED_CONTENT')) {
+          throw new Error(SAFETY_MSG);
+        }
+        throw new Error('ไม่ได้รับคำตอบจาก AI กรุณาลองใหม่');
       }
-      if (!data || typeof data.reply !== 'string') {
-        throw new Error('ได้รับข้อมูลตอบกลับที่ไม่ถูกต้อง');
-      }
-      return data;
+      return { reply, truncated: candidate.finishReason === 'MAX_TOKENS' };
     } catch (err) {
       if (err.name === 'AbortError') throw new Error('การเชื่อมต่อใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง');
-      if (err instanceof TypeError) throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+      if (err instanceof TypeError) throw new Error('เชื่อมต่อ AI ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
       throw err;
     } finally {
       clearTimeout(timer);
@@ -267,6 +358,10 @@
   async function sendMessage(text) {
     const content = text.trim();
     if (!content || busy) return;
+    if (!getApiKey()) {
+      openKeyDialog(); // ยังไม่มี key: เก็บข้อความไว้ในช่องพิมพ์ ยังไม่ส่ง
+      return;
+    }
 
     $chips.hidden = true;
     addMessage('user', content);
@@ -296,6 +391,31 @@
   $chips.addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (chip) sendMessage(chip.dataset.text || chip.textContent);
+  });
+
+  $settings.addEventListener('click', openKeyDialog);
+  $keyCancel.addEventListener('click', closeKeyDialog);
+  $keyClear.addEventListener('click', () => {
+    try { localStorage.removeItem(KEY_STORAGE); } catch { /* ไม่เป็นไร */ }
+    closeKeyDialog();
+  });
+  $keyForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const key = $keyInput.value.trim();
+    if (key.length < 20 || /\s/.test(key)) {
+      $keyInput.setCustomValidity('รูปแบบ key ไม่ถูกต้อง');
+      $keyInput.reportValidity();
+      $keyInput.setCustomValidity('');
+      return;
+    }
+    try {
+      localStorage.setItem(KEY_STORAGE, key);
+    } catch {
+      alert('บันทึก key ไม่ได้ (เบราว์เซอร์อาจปิดการเก็บข้อมูล) key จะใช้ได้เฉพาะรอบนี้เท่านั้น');
+      CFG.GEMINI_API_KEY = key;
+    }
+    closeKeyDialog();
+    $input.focus();
   });
 
   $reset.addEventListener('click', () => {
