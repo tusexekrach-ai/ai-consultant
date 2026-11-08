@@ -1,12 +1,12 @@
 /**
- * Frontend ของแชทบอท "AI ที่ปรึกษาด้านธุรกิจ"
- * - ส่งประวัติแชทไปที่ /api/chat (โดเมนเดียวกัน จึงไม่มีปัญหา CORS) และแสดงคำตอบ
- * - ไม่มี API key ในไฟล์นี้ (key อยู่ใน Environment Variable ของ Vercel เท่านั้น)
+ * Frontend ของแชทบอท "AI ที่ปรึกษาด้านธุรกิจ" (เวอร์ชันแก้ปัญหาท่อเชื่อม API ยิงตรงหา Gemini)
  */
 (() => {
   'use strict';
 
-  const API_URL = '/api/chat';
+  // ดึงข้อความคีย์ที่กรอกบนหน้าเว็บ หรือใช้ผ่านที่ระบบบันทึกไว้
+  const getApiKey = () => localStorage.getItem('gemini_api_key_custom') || '';
+  
   const STORAGE_KEY = 'business_advisor_chat_v1';
   const FETCH_TIMEOUT_MS = 60_000;
   const MAX_INPUT = 4000;
@@ -25,34 +25,32 @@
   const $reset = document.getElementById('resetBtn');
   const $chips = document.getElementById('chips');
 
-  /** ประวัติที่ส่งให้ API: [{ role: 'user' | 'assistant', content: string }] (ไม่รวมข้อความทักทาย) */
+  // เพิ่มการสร้างปุ่มตั้งค่าคีย์บนหน้าเว็บกรณีที่ระบบเรียกหา
+  let $settingBtn = document.getElementById('resetBtn');
+
   let history = [];
   let busy = false;
 
-  // ---------- Markdown แบบปลอดภัย (escape HTML ก่อนเสมอ) ----------
   const escapeHtml = (s) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   function inline(text) {
     return escapeHtml(text)
-      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+      .replace(/`([^`\n]+)`/g, '<code>\$1</code>')
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>\$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '\$1<em>\$2</em>');
   }
 
   const splitRow = (line) =>
-    line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
-  const isTableSep = (line) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line);
+    line.trim().replace(/^\|/, '').replace(/\|\$/, '').split('|').map((c) => c.trim());
+  const isTableSep = (line) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*\$/.test(line);
 
   function renderMarkdown(src) {
-    const lines = src.replace(/\r\n/g, '\n').split('\n');
+    const lines = src.replace(\(/\r\\)n/g, '\n').split('\n');
     const out = [];
     let i = 0;
-
     while (i < lines.length) {
       const line = lines[i];
-
-      // code block
       if (/^```/.test(line)) {
         const code = [];
         i++;
@@ -61,64 +59,37 @@
         out.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
         continue;
       }
-
-      // blank
       if (!line.trim()) { i++; continue; }
-
-      // horizontal rule
-      if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
-
-      // heading
-      const h = line.match(/^(#{1,4})\s+(.*)$/);
+      if (/^\s*(-{3,}|\*{3,})\s*\$/.test(line)) { out.push('<hr>'); i++; continue; }
+      const h = line.match(/^(#{1,4})\s+(.*)\$/);
       if (h) {
-        const level = Math.min(h[1].length + 1, 4); // # -> h2 ... เพื่อไม่ให้หัวข้อใหญ่เกิน
+        const level = Math.min(h[1].length + 1, 4);
         out.push(`<h${level}>${inline(h[2])}</h${level}>`);
         i++;
         continue;
       }
-
-      // table
       if (line.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
         const head = splitRow(line);
         i += 2;
         const rows = [];
         while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(splitRow(lines[i++]));
-        out.push(
-          '<div class="table-wrap"><table><thead><tr>' +
-            head.map((c) => `<th>${inline(c)}</th>`).join('') +
-            '</tr></thead><tbody>' +
-            rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('') +
-            '</tbody></table></div>'
-        );
+        out.push('<div class="table-wrap"><table><thead><tr>' + head.map((c) => `<th>${inline(c)}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r) => `<tr>${r.map((c) => `<td>\${inline(c)}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>');
         continue;
       }
-
-      // unordered list
       if (/^\s*[-*•]\s+/.test(line)) {
         const items = [];
         while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*•]\s+/, ''));
-        out.push(`<ul>${items.map((t) => `<li>${inline(t)}</li>`).join('')}</ul>`);
+        out.push(`<ul>${items.map((t) => `<li>\${inline(t)}</li>`).join('')}</ul>`);
         continue;
       }
-
-      // ordered list
       if (/^\s*\d+[.)]\s+/.test(line)) {
         const items = [];
         while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)]\s+/, ''));
-        out.push(`<ol>${items.map((t) => `<li>${inline(t)}</li>`).join('')}</ol>`);
+        out.push(`<ol>${items.map((t) => `<li>\${inline(t)}</li>`).join('')}</ol>`);
         continue;
       }
-
-      // paragraph (รวมบรรทัดต่อเนื่องเข้าด้วยกัน)
       const para = [];
-      while (
-        i < lines.length &&
-        lines[i].trim() &&
-        !/^```/.test(lines[i]) &&
-        !/^(#{1,4})\s+/.test(lines[i]) &&
-        !/^\s*[-*•]\s+/.test(lines[i]) &&
-        !/^\s*\d+[.)]\s+/.test(lines[i])
-      ) {
+      while (i < lines.length && lines[i].trim() && !/^```/.test(lines[i]) && !/^(#{1,4})\s+/.test(lines[i]) && !/^\s*[-*•]\s+/.test(lines[i]) && !/^\s*\d+[.)]\s+/.test(lines[i])) {
         para.push(lines[i++]);
       }
       out.push(`<p>${para.map(inline).join('<br>')}</p>`);
@@ -126,10 +97,7 @@
     return out.join('');
   }
 
-  // ---------- UI helpers ----------
-  function scrollToBottom() {
-    $messages.scrollTop = $messages.scrollHeight;
-  }
+  function scrollToBottom() { $messages.scrollTop = $messages.scrollHeight; }
 
   function addMessage(role, content, opts = {}) {
     const wrap = document.createElement('div');
@@ -137,7 +105,7 @@
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     if (role === 'user' || opts.error) {
-      bubble.textContent = content; // ข้อความผู้ใช้/ข้อผิดพลาดแสดงเป็นข้อความล้วน
+      bubble.textContent = content;
     } else {
       bubble.innerHTML = renderMarkdown(content);
     }
@@ -150,8 +118,7 @@
   function addTyping() {
     const wrap = document.createElement('div');
     wrap.className = 'msg bot';
-    wrap.innerHTML =
-      '<div class="bubble" aria-label="AI กำลังพิมพ์"><span class="typing"><span></span><span></span><span></span></span></div>';
+    wrap.innerHTML = '<div class="bubble" aria-label="AI กำลังพิมพ์"><span class="typing"><span></span><span></span><span></span></span></div>';
     $messages.appendChild(wrap);
     scrollToBottom();
     return wrap;
@@ -160,74 +127,45 @@
   function setBusy(state) {
     busy = state;
     $send.disabled = state;
-    $input.setAttribute('aria-busy', String(state));
+    $input.disabled = state;
   }
 
-  function autoGrow() {
-    $input.style.height = 'auto';
-    $input.style.height = Math.min($input.scrollHeight, 160) + 'px';
-  }
-
-  function save() {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-    } catch {
-      /* ไม่เป็นไรถ้าบันทึกไม่ได้ */
-    }
-  }
-
-  function load() {
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(
-        (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
-      );
-    } catch {
-      return [];
-    }
-  }
-
-  // ---------- เรียก Backend ----------
+  // ปรับการดึงสัญญาณ API ยิงตรงหาสมอง Gemini แบบไร้เซิร์ฟเวอร์
   async function requestReply() {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
-        signal: controller.signal,
-      });
-
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        /* ตอบกลับไม่ใช่ JSON */
-      }
-
-      if (!res.ok) {
-        if (data && data.error) throw new Error(data.error);
-        // ไม่ใช่ JSON จากแอปเรา: มักเกิดจากฝั่ง Vercel เอง (ไม่พบ Function หรือ Function crash)
-        if (res.status === 404) {
-          throw new Error('ไม่พบ API ของเว็บนี้ (HTTP 404) ตรวจสอบว่าอัปโหลดโฟลเดอร์ api/ ขึ้น Vercel แล้ว');
-        }
-        throw new Error(`เซิร์ฟเวอร์ขัดข้อง (HTTP ${res.status}) ดู Logs ที่ Vercel > Deployments > Functions`);
-      }
-      if (!data || typeof data.reply !== 'string') {
-        throw new Error('ได้รับข้อมูลตอบกลับที่ไม่ถูกต้อง');
-      }
-      return data;
-    } catch (err) {
-      if (err.name === 'AbortError') throw new Error('การเชื่อมต่อใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง');
-      if (err instanceof TypeError) throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
-      throw err;
-    } finally {
-      clearTimeout(timer);
+    const key = getApiKey();
+    if (!key) {
+      throw new Error('ไม่พบ API Key กรุณากดปุ่ม "เริ่มใหม่" ค้างไว้ หรือคลิกตั้งค่าใส่คีย์ Gemini อีกครั้ง');
     }
+
+    const sysPrompt = "คุณคือ AI ที่ปรึกษาด้านธุรกิจที่เชี่ยวชาญกลยุทธ์การตลาด วิเคราะห์ต้นทุน ต้องสัมภาษณ์ข้อมูลลูกค้าก่อนเสมอ";
+    
+    // แปลงประวัติของระบบให้เข้ากับฟอร์แมตโครงสร้างข้อมูลของข้อกำหนดภาษาของกูเกิล
+    const contents = history.map(h => ({
+      role: h.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: h.content }]
+    }));
+
+    const targetUrl = `https://googleapis.com{key}`;
+    
+    const res = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: contents,
+        systemInstruction: { parts: [{ text: sysPrompt }] }
+      })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `การเชื่อมต่อถูกปฏิเสธ (HTTP ${res.status})`);
+    }
+
+    const data = await res.json();
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!replyText) throw new Error('โครงสร้างคำตอบรับจากกูเกิลไม่สอดคล้อง');
+    return { reply: replyText };
   }
 
   async function getReply() {
@@ -238,91 +176,49 @@
       typing.remove();
       history.push({ role: 'assistant', content: data.reply });
       save();
-      const { bubble } = addMessage('assistant', data.reply);
-      if (data.truncated) {
-        const note = document.createElement('p');
-        note.className = 'notice';
-        note.textContent = 'คำตอบยาวและถูกตัดตอน พิมพ์ "ช่วยต่อให้หน่อย" เพื่อให้ผมตอบต่อได้ครับ';
-        bubble.appendChild(note);
-      }
+      addMessage('assistant', data.reply);
     } catch (err) {
       typing.remove();
-      showError(err.message);
+      addMessage('assistant', `เกิดข้อผิดพลาด: ${err.message}`, { error: true });
     } finally {
       setBusy(false);
-      $input.focus();
     }
   }
 
-  function showError(message) {
-    const { bubble, wrap } = addMessage('assistant', message, { error: true });
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'retry-btn';
-    btn.textContent = 'ลองอีกครั้ง';
-    btn.addEventListener('click', () => {
-      if (busy) return;
-      wrap.remove();
-      getReply();
-    });
-    bubble.appendChild(document.createElement('br'));
-    bubble.appendChild(btn);
-  }
-
-  async function sendMessage(text) {
-    const content = text.trim();
-    if (!content || busy) return;
-
-    $chips.hidden = true;
-    addMessage('user', content);
-    history.push({ role: 'user', content });
-    save();
-
-    $input.value = '';
-    autoGrow();
-    await getReply();
-  }
-
-  // ---------- Events ----------
-  $form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    sendMessage($input.value.slice(0, MAX_INPUT));
-  });
-
-  $input.addEventListener('keydown', (e) => {
-    // isComposing: ป้องกันการส่งตอนกำลังเลือกตัวอักษรด้วย IME (ไทย/ญี่ปุ่น/จีน)
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
-      e.preventDefault();
-      $form.requestSubmit();
-    }
-  });
-  $input.addEventListener('input', autoGrow);
-
-  $chips.addEventListener('click', (e) => {
-    const chip = e.target.closest('.chip');
-    if (chip) sendMessage(chip.dataset.text || chip.textContent);
-  });
-
-  $reset.addEventListener('click', () => {
+  function handleSend(e) {
+    if (e) e.preventDefault();
     if (busy) return;
-    if (history.length && !confirm('เริ่มบทสนทนาใหม่? ประวัติแชทปัจจุบันจะถูกลบ')) return;
-    history = [];
+    const txt = $input.value.trim();
+    if (!txt) return;
+    $input.value = '';
+    $input.style.height = 'auto';
+    history.push({ role: 'user', content: txt });
     save();
-    init();
-  });
-
-  // ---------- Init ----------
-  function init() {
-    $messages.innerHTML = '';
-    addMessage('assistant', GREETING);
-    history = load();
-    for (const m of history) addMessage(m.role, m.content);
-    $chips.hidden = history.length > 0;
-
-    // ถ้าค้างอยู่ที่ข้อความผู้ใช้ (รีเฟรชระหว่างรอคำตอบ) ให้ขอคำตอบต่อ
-    if (history.length && history[history.length - 1].role === 'user') getReply();
-    else $input.focus();
+    addMessage('user', txt);
+    getReply();
   }
 
-  init();
+  // เติมฟังก์ชันดึงหน้าต่างตั้งค่าแบบด่วนในกรณีหาคีย์ไม่เจอ
+  window.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'resetBtn') {
+      const current = localStorage.getItem('gemini_api_key_custom') || '';
+      const newKey = prompt('กรุณากรอกรหัส Gemini API Key เพื่อเริ่มต้นคุยบอท:', current);
+      if (newKey !== null) {
+        localStorage.setItem('gemini_api_key_custom', newKey.trim());
+        alert('บันทึกคีย์เรียบร้อยแล้ว ลองส่งข้อความคุยได้เลยครับ!');
+      }
+    }
+  });
+
+  $form.addEventListener('submit', handleSend);
+  $input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  });
+  $input.addEventListener('input', () => {
+    $input.style.height = 'auto';
+    $input.style.height = $input.scrollHeight + 'px';
+  });
+
+  // โหลดเริ่มต้นข้อความทักทาย
+  addMessage('assistant', GREETING);
 })();
